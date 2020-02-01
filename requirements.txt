@@ -1,0 +1,5 @@
+padasip
+numpy
+pywavelets
+matplotlib
+scipy
