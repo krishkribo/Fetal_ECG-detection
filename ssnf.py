@@ -1,22 +1,23 @@
 from math import sqrt
 
 
+# Corr2 function from the paper
 def corr(W, m, n, l):
     result = 1
-    for i in range(l - 1):
+    for i in range(l):
         result *= W[m + i][n]
     return result
 
 
 def f(W: [float], corr2: [float], mask, m: int, n_length: int):
+    # Determine all values
     PCorr = sum([corr2[n] ** 2 for n in range(n_length)])
     PW = sum([W[m][n] ** 2 for n in range(n_length)])
 
     corr2 = [corr2[n] * sqrt(PW / PCorr) for n in range(n_length)]
 
+    # Update mask
     for n in range(n_length):
-        if abs(corr2[n]) != abs(W[m][n]):
-            print(abs(corr2[n]), abs(W[m][n]))
         if abs(corr2[n]) > abs(W[m][n]):
             corr2[n] = 0.0
             W[m][n] = 0.0
@@ -30,7 +31,7 @@ def ssnf(W: [[float]], scales: int, noise_thresholds: [float]):
     n_length = len(W[0])
     mask = []
 
-    for m in range(scales-1):
+    for m in range(scales - 1):
         mask.append([0 for _ in range(n_length)])
 
         corr2 = [corr(W, m, n, 2) for n in range(n_length)]
@@ -42,5 +43,4 @@ def ssnf(W: [[float]], scales: int, noise_thresholds: [float]):
 
         for n in range(n_length):
             WW[m][n] = mask[m][n] * WW[m][n]
-
     return WW

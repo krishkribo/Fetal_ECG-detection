@@ -1,166 +1,183 @@
-
-import matplotlib as m
-import os
-from matplotlib import pyplot as plt
 import numpy as np
 import pywt
-import padasip
-from time import sleep
+from matplotlib import pyplot as plt
+from padasip.filters import FilterLMS
+from pywt import Wavelet
 from scipy import signal
+
 from ssnf import ssnf
 
-def hp_filter(inp_signal):
-    sos = signal.butter(2, 0.6, btype='highpass', fs=1000, output='sos')
-    filtered = signal.sosfilt(sos, inp_signal)
-    return filtered
+DATA_FREQUENCY = 1000
+MAX_FIGURE_RANGE = 5000
 
-def get_data(files):
-    d_point=[]
-    with open(files+".txt") as file:
-        fread=file.readlines()
-        for data in fread:
-            d_point.append(float(data))
-    return d_point
+# High-pass filter parameters
+BUTTER_FILTER_ORDER = 2
+BUTTER_CRITICAL_FREQUENCY = 600 / DATA_FREQUENCY
+
+# LMS parameters
+LMS_STEP_SIZE = 0.01
+LMS_FILTER_LENGTH = 6
+
+# Wavelet transform parameters
+WAVELET_STYLE = Wavelet("bior1.5")
+
+
+def fprint(s: str):
+    print("-----> " + s)
+
+
+# Read data from file
+def get_data(file_name: str):
+    with open(file_name + '.txt') as f:
+        return [float(x) for x in f.readlines()]
+
+
+# Plotting
+def plot_single_data(data: [float], title: str = ''):
+    r = min(MAX_FIGURE_RANGE, len(data))
+    plt.figure()
+    plt.plot(list(range(r)), data[:r])
+    if title:
+        plt.title(title)
+    plt.draw()
+
+
+def plot_data(data: [[float]], title: str, t_lst: [str]):
+    r = min(MAX_FIGURE_RANGE, len(data[0]))
+    fig, ax = plt.subplots(np.shape(data)[0])
+    plt.subplots_adjust(hspace=1)
+    fig.suptitle(title)
+    for i in range(0, np.shape(data)[0]):
+        ax[i].plot([x for x in range(r)], data[i][:r])
+        ax[i].set_title(t_lst[i])
+    plt.draw()
+
+
+def subplot_data(data: [[float]], title: str):
+    sub_titles = ["Filtered with thorax wavelet coefficients :" + str(i) for i in range(0, np.shape(data)[0])]
+    plot_data(data, title, sub_titles)
+
+
+def subplot_data1(data: [[float]], title: str):
+    r = min(MAX_FIGURE_RANGE, len(data[0]))
+    fig, ax = plt.subplots(np.shape(data)[0])
+    plt.subplots_adjust(hspace=1)
+    fig.suptitle(title)
+    d = 1
+    for i in range(0, np.shape(data)[0]):
+        ax[i].plot([x for x in range(0, len(data[i]))], data[i])
+        j = 1 if i % 2 == 0 or i == 0 else 2
+        ax[i].set_title("Abdome signal:" + str(d) + " Thorax signal:" + str(j))
+        if j == 2:
+            d += 1
+    plt.draw()
+
+
+# High-pass Butter filter
+def hp_filter(inp_signal):
+    sos = signal.butter(BUTTER_FILTER_ORDER, BUTTER_CRITICAL_FREQUENCY, btype='highpass', fs=DATA_FREQUENCY,
+                        output='sos')
+    return signal.sosfilt(sos, inp_signal)
+
 
 # Normalize input data
-def normalize_data(data):
+def normalize_data(data: [float]):
     mean = sum(data) / len(data)
     data = [d - mean for d in data]
     m = max(data)
     return [d / m for d in data]
 
 
-def plot_data(data,title,t_lst):
-    fig,ax=plt.subplots(len(data))
-    plt.subplots_adjust(hspace=1)
-    fig.suptitle(title)
-    for d in range(len(data)):
-        ax[d].plot([x for x in range(0,len(data[d]))],data[d])
-        ax[d].set_title(t_lst[d])
-    plt.draw()
+# Stationary wavelet transform
+def swt(data: [[float]]):
+    return pywt.swt(data, wavelet=WAVELET_STYLE, level=5, trim_approx=True)
 
-def subplot_data(data,title):
-    fig,ax=plt.subplots(np.shape(data)[0])
-    plt.subplots_adjust(hspace=1)
-    fig.suptitle(title)
-    for i in range(0,np.shape(data)[0]):
-        ax[i].plot([x for x in range(0,len(data[i]))],data[i])
-        ax[i].set_title("Filtered with thorax wavelet coefficients :"+str(i))
-    plt.draw()
 
-    
-def subplot_data1(data,title):
-    fig,ax=plt.subplots(np.shape(data)[0])
-    plt.subplots_adjust(hspace=1)
-    fig.suptitle(title)
-    d=1
-    for i in range(0,np.shape(data)[0]):
-        ax[i].plot([x for x in range(0,len(data[i]))],data[i])
-        if i%2==0 or i==0: j=1
-        else : j=2
-        ax[i].set_title("Abdome signal:"+str(d)+" Thorax signal:"+str(j))
-        if j==2: d+=1
-    plt.draw()
+# Inverse stationary wavelet transform
+def inv_swt(coeff):
+    return pywt.iswt(coeff, wavelet=WAVELET_STYLE)
 
-def swt(data,wstyle):
-    #data=get_data(data)
-    return  pywt.swt(normalize_data(data),wstyle,level=5,trim_approx=True)
 
-def inv_swt(coeff,wstyle):
-    return pywt.iswt(coeff,wstyle)
-
-def lms_algo(d,x):
-    filt=padasip.filters.FilterLMS(6,mu=0.01,w='random')
-    y,e,w=filt.run(d,x)
+# Least Mean Squares algorithm
+def apply_lms(desired_value: [float], input_matrix: [[float]]):
+    y, _, _ = FilterLMS(LMS_FILTER_LENGTH, mu=LMS_STEP_SIZE, w='random').run(desired_value, input_matrix)
     return y
 
-def calculate_lms(input_signals,reference_signals):
-    # input signal -- abdomen signal
-    # reference signal -- thorax signal
-    res=[]
-    inp_data=np.transpose(input_signals)
-    #print(np.shape(inp_data))
-    for ref_data in reference_signals:
-        ref_data=np.transpose(ref_data)
-        y=[lms_algo(ref_data[:,i],inp_data) for i in range(0,np.shape(ref_data)[1])]
-        res.append(y)
 
+def calculate_lms(input_signals: [[float]], reference_signals: [[float]]):
+    res = []
+    inp_data = np.transpose(input_signals)
+    for ref_data in reference_signals:
+        ref_data = np.transpose(ref_data)
+        y = [apply_lms(ref_data[:, i], inp_data) for i in range(0, np.shape(ref_data)[1])]
+        res.append(y)
     return res
 
 
+# Main parts of the algorithm
+def pre_processing(data: [str]):
+    data = [hp_filter(d) for d in data]
+    # plot_data(hp_data_filtered,"High pass filtered data",inp_data)
+    fprint("High pass filter applied")
+    return [normalize_data(d) for d in data]
 
-if __name__=="__main__":
-    inp_data=[]
-    data=os.listdir()
-    ## implementing the adaptive filtering
-    for i in range(0,len(data)):
-        if len(data[i].split('.')) ==1 :
-            continue
-        if (data[i].split('.')[1])=='txt':
-            inp_data.append((data[i].split('.'))[0])
-    print(inp_data)
-    #plot_data([get_data(data) for data in inp_data],"ECG signals",inp_data)
-    print("-----> ECG data readed <-----")
 
-    # pre processing
-    # apply high pass filter
-    hp_data_filtered=[hp_filter(get_data(data)) for data in inp_data]
-    #plot_data(hp_data_filtered,"High pass filtered data",inp_data)
-    print("-----> High pass filter applied <-----")
+if __name__ == "__main__":
+    # Filenames of the input and reference signals
+    files = ['abdomen1', 'abdomen2', 'abdomen3', 'thorax1', 'thorax2']
+    # Load data from file
+    data = [get_data(f) for f in files]
+    plot_data(data, "Raw data", files)
+    data = pre_processing(data)
+    subplot_data(data, "Pre-processing")
 
     # step 1 - process the signal by the stationary wavelet transfrom method
-    wavelet_data=[swt(data,pywt.Wavelet("bior1.5")) for data in hp_data_filtered]
-    print("-----> wavelet tranformed <-----")
+    data = [swt(d) for d in data]
+    fprint("Data transformed into wavelet domain")
 
     # step 2 - filter the wavelet coefficients obtained from the previous step
+    wavelet_data = []
+    for abdomen in range(3):
+        # send abdomen data as the input signal and thorax signals as the reference
+        wavelet_data.append(calculate_lms(data[abdomen], data[3:]))
+        for thorax in range(2):
+            subplot_data(wavelet_data[abdomen][thorax],
+                         "Input data: Abdomen signal {}, Reference data: thorax_signal {}".format(abdomen + 1,
+                                                                                                  thorax + 1))
+        fprint("Abdomen {} data filtered".format(abdomen))
+    data = wavelet_data
 
-    # send abdomen1 data as the input signal and thorax signals as the reference
-    filter_abd1_data=calculate_lms(wavelet_data[0],wavelet_data[3:])
-    subplot_data(filter_abd1_data[0],"Input data: Abdomen signal 1 ; Reference data: thorax_signal 1")
-    subplot_data(filter_abd1_data[1],"Input data: Abdomen signal 1 ; Reference data: thorax_signal 2")
-    print("-----> Abdomen 1 data filtered <-----")
-    
-    # send abdomen2 data as the input signal and thorax signals as the reference
-    filter_abd2_data=calculate_lms(wavelet_data[1],wavelet_data[3:])
-    subplot_data(filter_abd2_data[0],"Input data: Abdomen signal 2 ; Reference data: thorax_signal 1")
-    subplot_data(filter_abd2_data[1],"Input data: Abdomen signal 2 ; Reference data: thorax_signal 2")
-    print("-----> Abdomen 2 data filtered <-----")
-    
-    # send abdomen3 data as the input signal and thorax signals as the reference
-    filter_abd3_data=calculate_lms(wavelet_data[2],wavelet_data[3:])
-    subplot_data(filter_abd3_data[0],"Input data: Abdomen signal 3 ; Reference data: thorax_signal 1")
-    subplot_data(filter_abd3_data[1],"Input data: Abdomen signal 3 ; Reference data: thorax_signal 2")
-    print("-----> Abdomen 3 data filtered <-----")
-    
-    print("----------------------------- SSNF filteration ---------------------------------")
-    ssnf_abd1_1=ssnf(filter_abd1_data[0],5,5*[10])
-    ssnf_abd1_2=ssnf(filter_abd1_data[1],5,5*[10])
-    subplot_data(ssnf_abd1_1,"SSNF applied Input data: Abdomen signal 1 ; Reference data: thorax_signal 1")
-    subplot_data(ssnf_abd1_2,"SSNF applied Input data: Abdomen signal 1 ; Reference data: thorax_signal 2")
-    ssnf_abd1=[ssnf_abd1_1,ssnf_abd1_2]
-    ssnf_abd2_1=ssnf(filter_abd2_data[0],5,5*[10])
-    ssnf_abd2_2=ssnf(filter_abd2_data[1],5,5*[10])
-    subplot_data(ssnf_abd2_1,"SSNF applied Input data: Abdomen signal 2 ; Reference data: thorax_signal 1")
-    subplot_data(ssnf_abd2_2,"SSNF applied Input data: Abdomen signal 2 ; Reference data: thorax_signal 2")
-    ssnf_abd2=[ssnf_abd2_1,ssnf_abd2_2]
-    ssnf_abd3_1=ssnf(filter_abd3_data[0],5,5*[10])
-    ssnf_abd3_2=ssnf(filter_abd3_data[1],5,5*[10])
-    subplot_data(ssnf_abd3_1,"SSNF applied Input data: Abdomen signal 3 ; Reference data: thorax_signal 1")
-    subplot_data(ssnf_abd3_2,"SSNF applied Input data: Abdomen signal 3 ; Reference data: thorax_signal 2")
-    ssnf_abd3=[ssnf_abd3_1,ssnf_abd3_2]
+    # Step 3: SSNF filteration
+    ssnf_data = []
+    for abdomen in range(3):
+        ssnf_data.append([])
+        for thorax in range(2):
+            ssnf_data[abdomen].append(ssnf(data[abdomen][thorax], 5, 5 * [10]))
+            subplot_data(ssnf_data[abdomen][thorax],
+                         "SSNF applied Input data: Abdomen signal {}, Reference data: thorax_signal {}"
+                         .format(abdomen + 1, thorax + 1))
 
-    filterd_data=[filter_abd1_data,filter_abd2_data,filter_abd3_data]
-    
-    # Inverse wavelet of abdomen 1 signal
-    n_data=np.zeros((np.shape(filterd_data)[2],np.shape(filterd_data)[3]))
-    count=0;
-    for i in range(len(filterd_data)):
-        for j in range(len(filterd_data[1])):
-            inv_wav=inv_swt(filterd_data[i][j],pywt.Wavelet("bior1.5"))
-            n_data[count]=inv_wav
-            count=count+1
+    plot_single_data(ssnf_data[2][1][2])
 
-    subplot_data1(n_data,"inverse wavelet transformed data")
-    print("-----> Inverse wavelet transform applied <-----")
+    # Step 4: Inverse wavelet
+    n_data = np.zeros((np.shape(data)[2], np.shape(data)[3]))
+    count = 0
+    for i in range(len(data)):
+        for j in range(len(data[1])):
+            inv_wav = inv_swt(data[i][j])
+            n_data[count] = inv_wav
+            count = count + 1
+
+    subplot_data1(n_data, "inverse wavelet transformed data")
+    fprint("Inverse wavelet transform applied")
+
+    for f in range(len(files) - 2):
+        plot_data([ssnf_data[f][0][4], ssnf_data[f][1][4]],
+                  "Abdomen signal," + str(f + 1) + " with thorax reference data",
+                  ['Thorax 1', 'Thorax 2'])
+
+    plot_data([ssnf_data[0][0][4], ssnf_data[0][1][4]],
+              "Abdomen signal 3, with thorax reference data",
+              ['Thorax 1', 'Thorax 2'])
 
     plt.show()
