@@ -114,6 +114,7 @@ def calculate_lms(input_signals: [[float]], reference_signals: [[float]]):
     return res
 
 
+# Main parts of the algorithm
 def pre_processing(data: [str]):
     data = [hp_filter(d) for d in data]
     # plot_data(hp_data_filtered,"High pass filtered data",inp_data)
@@ -122,6 +123,7 @@ def pre_processing(data: [str]):
 
 
 if __name__ == "__main__":
+    # Filenames of the input and reference signals
     files = ['abdomen1', 'abdomen2', 'abdomen3', 'thorax1', 'thorax2']
     # Load data from file
     data = [get_data(f) for f in files]
@@ -152,8 +154,10 @@ if __name__ == "__main__":
         for thorax in range(2):
             ssnf_data[abdomen].append(ssnf(data[abdomen][thorax], 5, 5 * [10]))
             subplot_data(ssnf_data[abdomen][thorax],
-                         "SSNF applied Input data: Abdomen signal {}, Reference data: thorax_signal {}".format(
-                             abdomen + 1, thorax + 1))
+                         "SSNF applied Input data: Abdomen signal {}, Reference data: thorax_signal {}"
+                         .format(abdomen + 1, thorax + 1))
+
+    plot_single_data(ssnf_data[2][1][2])
 
     # Step 4: Inverse wavelet
     n_data = np.zeros((np.shape(data)[2], np.shape(data)[3]))
@@ -167,9 +171,13 @@ if __name__ == "__main__":
     subplot_data1(n_data, "inverse wavelet transformed data")
     fprint("Inverse wavelet transform applied")
 
-    for f in range(len(files)-2):
+    for f in range(len(files) - 2):
         plot_data([ssnf_data[f][0][4], ssnf_data[f][1][4]],
-                  "Abdomen signal,"+str(f+1)+" with thorax reference data",
+                  "Abdomen signal," + str(f + 1) + " with thorax reference data",
                   ['Thorax 1', 'Thorax 2'])
+
+    plot_data([ssnf_data[0][0][4], ssnf_data[0][1][4]],
+              "Abdomen signal 3, with thorax reference data",
+              ['Thorax 1', 'Thorax 2'])
 
     plt.show()
