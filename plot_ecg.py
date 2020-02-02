@@ -167,8 +167,9 @@ if __name__ == "__main__":
     subplot_data1(n_data, "inverse wavelet transformed data")
     fprint("Inverse wavelet transform applied")
 
-    plot_data([ssnf_data[2][0][4], ssnf_data[2][1][4]],
-              "Abdomen signal 3, with thorax reference data",
-              ['Thorax 1', 'Thorax 2'])
+    for f in range(len(files)-2):
+        plot_data([ssnf_data[f][0][4], ssnf_data[f][1][4]],
+                  "Abdomen signal,"+str(f+1)+" with thorax reference data",
+                  ['Thorax 1', 'Thorax 2'])
 
     plt.show()
